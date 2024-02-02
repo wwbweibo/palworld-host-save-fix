@@ -1,5 +1,7 @@
 # Palworld Host Save Fix
 
+
+
 > ### :warning: This tool is experimental. Be careful of data loss and *always* make a backup.
 
 Fixes the bug which forces a player to create a new character when they already have a save.
@@ -16,6 +18,16 @@ For example:
 The bug happens because players are identified and correlated to their save via their GUID. These different types of servers generate player GUIDs differently so when a player joins, the server generates a new GUID that doesn't match the old save's GUID and because of this, doesn't realize the player already has a save.
 
 To fix this bug, we've made a script that takes the GUID of the player on the new server and applies it to the player save from the old server so that the new server will use the player save from the old server.
+
+## extract tools update 
+
+> change extract tools from  uesave-rs to palworld-save-tools 
+
+after server version update to v0.1.4, using uesave-rs to extract and repackage the save data will cause some problem. When trying to migrate from a local save data to server save data. PalServer will fix the data, then, user will not be able to join to guild exist before.
+
+before you run this script to migrate your data, please install [Palworld-save-tools](https://github.com/cheahjs/palworld-save-tools) first. Then you can use this script as before but change the `uesave.exe` path to `palworld-save-tools/convert.py` file path. 
+
+> NOTE: you should install python3 first.
 
 ## Usage
 

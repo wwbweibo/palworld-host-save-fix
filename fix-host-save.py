@@ -86,28 +86,33 @@ of your save folder before continuing. Press enter if you would like to continue
     # Replace all instances of the old GUID with the new GUID.
     
     # Player data replacement.
-    old_json["root"]["properties"]["SaveData"]["Struct"]["value"]["Struct"]["PlayerUId"]["Struct"]["value"]["Guid"] = new_guid_formatted
-    old_json["root"]["properties"]["SaveData"]["Struct"]["value"]["Struct"]["IndividualId"]["Struct"]["value"]["Struct"]["PlayerUId"]["Struct"]["value"]["Guid"] = new_guid_formatted
-    old_instance_id = old_json["root"]["properties"]["SaveData"]["Struct"]["value"]["Struct"]["IndividualId"]["Struct"]["value"]["Struct"]["InstanceId"]["Struct"]["value"]["Guid"]
+    old_json["properties"]["SaveData"]["value"]["PlayerUId"]["value"] = new_guid_formatted
+    old_json["properties"]["SaveData"]["value"]["IndividualId"]["value"]["PlayerUId"]["value"] = new_guid_formatted
+    old_instance_id = old_json["properties"]["SaveData"]["value"]["IndividualId"]["value"]["InstanceId"]["value"]
     
     # Level data replacement.
-    instance_ids_len = len(level_json["root"]["properties"]["worldSaveData"]["Struct"]["value"]["Struct"]["CharacterSaveParameterMap"]["Map"]["value"])
+    instance_ids_len = len(level_json["properties"]["worldSaveData"]["value"]["CharacterSaveParameterMap"]["value"])
     for i in range(instance_ids_len):
-        instance_id = level_json["root"]["properties"]["worldSaveData"]["Struct"]["value"]["Struct"]["CharacterSaveParameterMap"]["Map"]["value"][i]["key"]["Struct"]["Struct"]["InstanceId"]["Struct"]["value"]["Guid"]
+        instance_id = level_json["properties"]["worldSaveData"]["value"]["CharacterSaveParameterMap"]["value"][i]["key"]["InstanceId"]["value"]
         if instance_id == old_instance_id:
-            level_json["root"]["properties"]["worldSaveData"]["Struct"]["value"]["Struct"]["CharacterSaveParameterMap"]["Map"]["value"][i]["key"]["Struct"]["Struct"]["PlayerUId"]["Struct"]["value"]["Guid"] = new_guid_formatted
+            level_json["properties"]["worldSaveData"]["value"]["CharacterSaveParameterMap"]["value"][i]["key"]["PlayerUId"]["value"] = new_guid_formatted
             break
     
     # Guild data replacement.
-    group_ids_len = len(level_json["root"]["properties"]["worldSaveData"]["Struct"]["value"]["Struct"]["GroupSaveDataMap"]["Map"]["value"])
+    group_ids_len = len(level_json["properties"]["worldSaveData"]["value"]["GroupSaveDataMap"]["value"])
     for i in range(group_ids_len):
-        group_id = level_json["root"]["properties"]["worldSaveData"]["Struct"]["value"]["Struct"]["GroupSaveDataMap"]["Map"]["value"][i]
-        if group_id["value"]["Struct"]["Struct"]["GroupType"]["Enum"]["value"] == "EPalGroupType::Guild":
-           group_raw_data =  group_id["value"]["Struct"]["Struct"]["RawData"]["Array"]["value"]["Base"]["Byte"]["Byte"]
-           raw_data_len = len(group_raw_data)
-           for i in range(raw_data_len-15):
-               if group_raw_data[i:i+16] == old_level_formatted:
-                  group_raw_data[i:i+16] = new_level_formatted
+        group_id = level_json["properties"]["worldSaveData"]["value"]["GroupSaveDataMap"]["value"][i]
+        if group_id["value"]["GroupType"]["value"]["value"] == "EPalGroupType::Guild":
+            group_raw_data =  group_id["value"]["RawData"]["value"]["individual_character_handle_ids"]
+            raw_data_len = len(group_raw_data)
+            for i in range(raw_data_len):
+                # if group_raw_data[i]["guid"] == old_guid:
+                group_raw_data[i]["guid"] = new_guid_formatted
+            # add new user id into guild
+            group_id["value"]["RawData"]["value"]["guild_name"] = "Guild OF W"
+            group_id["value"]["RawData"]["value"]["admin_player_uid"] = new_guid_formatted
+            group_id["value"]["RawData"]["value"]["players"][0]["player_uid"] = new_guid_formatted
+    
     print('Changes have been made')
     
     # Dump modified data to JSON.
@@ -116,7 +121,8 @@ of your save folder before continuing. Press enter if you would like to continue
     with open(level_json_path, 'w') as f:
         json.dump(level_json, f, indent=2)
     print('JSON files have been exported')
-    
+
+    # return 
     # Convert our JSON files to save files.
     json_to_sav(uesave_path, level_json_path)
     json_to_sav(uesave_path, old_json_path)
@@ -134,91 +140,102 @@ of your save folder before continuing. Press enter if you would like to continue
     print('Fix has been applied! Have fun!')
 
 def sav_to_json(uesave_path, file):
-    with open(file, 'rb') as f:
-        # Read the file
-        data = f.read()
-        uncompressed_len = int.from_bytes(data[0:4], byteorder='little')
-        compressed_len = int.from_bytes(data[4:8], byteorder='little')
-        magic_bytes = data[8:11]
-        save_type = data[11]
-        # Check for magic bytes
-        if magic_bytes != b'PlZ':
-            print(f'File {file} is not a save file, found {magic_bytes} instead of P1Z')
-            return
-        # Valid save types
-        if save_type not in [0x30, 0x31, 0x32]:
-            print(f'File {file} has an unknown save type: {save_type}')
-            return
-        # We only have 0x31 (single zlib) and 0x32 (double zlib) saves
-        if save_type not in [0x31, 0x32]:
-            print(f'File {file} uses an unhandled compression type: {save_type}')
-            return
-        if save_type == 0x31:
-            # Check if the compressed length is correct
-            if compressed_len != len(data) - 12:
-                print(f'File {file} has an incorrect compressed length: {compressed_len}')
-                return
-        # Decompress file
-        uncompressed_data = zlib.decompress(data[12:])
-        if save_type == 0x32:
-            # Check if the compressed length is correct
-            if compressed_len != len(uncompressed_data):
-                print(f'File {file} has an incorrect compressed length: {compressed_len}')
-                return
-            # Decompress file
-            uncompressed_data = zlib.decompress(uncompressed_data)
-        # Check if the uncompressed length is correct
-        if uncompressed_len != len(uncompressed_data):
-            print(f'File {file} has an incorrect uncompressed length: {uncompressed_len}')
-            return
-        # Save the uncompressed file
-        with open(file + '.gvas', 'wb') as f:
-            f.write(uncompressed_data)
-        print(f'File {file} uncompressed successfully')
-        # Convert to json with uesave
-        # Run uesave.exe with the uncompressed file piped as stdin
-        # Standard out will be the json string
-        uesave_run = subprocess.run(uesave_to_json_params(uesave_path, file+'.json'), input=uncompressed_data, capture_output=True)
-        # Check if the command was successful
-        if uesave_run.returncode != 0:
-            print(f'uesave.exe failed to convert {file} (return {uesave_run.returncode})')
-            print(uesave_run.stdout.decode('utf-8'))
-            print(uesave_run.stderr.decode('utf-8'))
-            return
-        print(f'File {file} (type: {save_type}) converted to JSON successfully')
-
-def json_to_sav(uesave_path, file):
-    # Convert the file back to binary
-    gvas_file = file.replace('.sav.json', '.sav.gvas')
-    sav_file = file.replace('.sav.json', '.sav')
-    uesave_run = subprocess.run(uesave_from_json_params(uesave_path, file, gvas_file))
+    uesave_run =  subprocess.run(['python3', uesave_path, file])
     if uesave_run.returncode != 0:
         print(f'uesave.exe failed to convert {file} (return {uesave_run.returncode})')
         return
-    # Open the old sav file to get type
-    with open(sav_file, 'rb') as f:
-        data = f.read()
-        save_type = data[11]
-    # Open the binary file
-    with open(gvas_file, 'rb') as f:
-        # Read the file
-        data = f.read()
-        uncompressed_len = len(data)
-        compressed_data = zlib.compress(data)
-        compressed_len = len(compressed_data)
-        if save_type == 0x32:
-            compressed_data = zlib.compress(compressed_data)
-        with open(sav_file, 'wb') as f:
-            f.write(uncompressed_len.to_bytes(4, byteorder='little'))
-            f.write(compressed_len.to_bytes(4, byteorder='little'))
-            f.write(b'PlZ')
-            f.write(bytes([save_type]))
-            f.write(bytes(compressed_data))
-    print(f'Converted {file} to {sav_file}')
+    print(f'File {file} converted to JSON successfully')
+
+    # with open(file, 'rb') as f:
+    #     # Read the file
+    #     data = f.read()
+    #     uncompressed_len = int.from_bytes(data[0:4], byteorder='little')
+    #     compressed_len = int.from_bytes(data[4:8], byteorder='little')
+    #     magic_bytes = data[8:11]
+    #     save_type = data[11]
+    #     # Check for magic bytes
+    #     if magic_bytes != b'PlZ':
+    #         print(f'File {file} is not a save file, found {magic_bytes} instead of P1Z')
+    #         return
+    #     # Valid save types
+    #     if save_type not in [0x30, 0x31, 0x32]:
+    #         print(f'File {file} has an unknown save type: {save_type}')
+    #         return
+    #     # We only have 0x31 (single zlib) and 0x32 (double zlib) saves
+    #     if save_type not in [0x31, 0x32]:
+    #         print(f'File {file} uses an unhandled compression type: {save_type}')
+    #         return
+    #     if save_type == 0x31:
+    #         # Check if the compressed length is correct
+    #         if compressed_len != len(data) - 12:
+    #             print(f'File {file} has an incorrect compressed length: {compressed_len}')
+    #             return
+    #     # Decompress file
+    #     uncompressed_data = zlib.decompress(data[12:])
+    #     if save_type == 0x32:
+    #         # Check if the compressed length is correct
+    #         if compressed_len != len(uncompressed_data):
+    #             print(f'File {file} has an incorrect compressed length: {compressed_len}')
+    #             return
+    #         # Decompress file
+    #         uncompressed_data = zlib.decompress(uncompressed_data)
+    #     # Check if the uncompressed length is correct
+    #     if uncompressed_len != len(uncompressed_data):
+    #         print(f'File {file} has an incorrect uncompressed length: {uncompressed_len}')
+    #         return
+    #     # Save the uncompressed file
+    #     with open(file + '.gvas', 'wb') as f:
+    #         f.write(uncompressed_data)
+    #     print(f'File {file} uncompressed successfully')
+    #     # Convert to json with uesave
+    #     # Run uesave.exe with the uncompressed file piped as stdin
+    #     # Standard out will be the json string
+    #     uesave_run = subprocess.run(uesave_to_json_params(uesave_path, file+'.json'), input=uncompressed_data, capture_output=True)
+    #     # Check if the command was successful
+    #     if uesave_run.returncode != 0:
+    #         print(f'uesave.exe failed to convert {file} (return {uesave_run.returncode})')
+    #         print(uesave_run.stdout.decode('utf-8'))
+    #         print(uesave_run.stderr.decode('utf-8'))
+    #         return
+    #     print(f'File {file} (type: {save_type}) converted to JSON successfully')
+
+def json_to_sav(uesave_path, file):
+    uesave_run = subprocess.run(['python3', uesave_path, file])
+    if uesave_run.returncode != 0:
+        print(f'uesave.exe failed to convert {file} (return {uesave_run.returncode})')
+        return
+    # print(f'File {file} converted to SAV successfully')
+    # # Convert the file back to binary
+    # gvas_file = file.replace('.sav.json', '.sav.gvas')
+    # sav_file = file.replace('.sav.json', '.sav')
+    # uesave_run = subprocess.run(uesave_from_json_params(uesave_path, file, gvas_file))
+    # if uesave_run.returncode != 0:
+    #     print(f'uesave.exe failed to convert {file} (return {uesave_run.returncode})')
+    #     return
+    # # Open the old sav file to get type
+    # with open(sav_file, 'rb') as f:
+    #     data = f.read()
+    #     save_type = data[11]
+    # # Open the binary file
+    # with open(gvas_file, 'rb') as f:
+    #     # Read the file
+    #     data = f.read()
+    #     uncompressed_len = len(data)
+    #     compressed_data = zlib.compress(data)
+    #     compressed_len = len(compressed_data)
+    #     if save_type == 0x32:
+    #         compressed_data = zlib.compress(compressed_data)
+    #     with open(sav_file, 'wb') as f:
+    #         f.write(uncompressed_len.to_bytes(4, byteorder='little'))
+    #         f.write(compressed_len.to_bytes(4, byteorder='little'))
+    #         f.write(b'PlZ')
+    #         f.write(bytes([save_type]))
+    #         f.write(bytes(compressed_data))
+    # print(f'Converted {file} to {sav_file}')
 
 def clean_up_files(file):
     os.remove(file + '.json')
-    os.remove(file + '.gvas')
+    # os.remove(file + '.gvas')
 
 def uesave_to_json_params(uesave_path, out_path):
     args = [
